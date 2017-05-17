@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # -*- coding: utf-8 -*-
 # author:  	maxime déraspe
-# email:	maxime@deraspe.net
+# email:	maximilien1er@gmail.com
 # date:    	2015-06-17
 # version: 	0.01
 
