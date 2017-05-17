@@ -1,0 +1,862 @@
+#!/usr/bin/env ruby
+# -*- coding: utf-8 -*-
+# genbank-manip.rb --- 
+# 
+# Filename: genbank-manip.rb
+# Description: 
+# Author: Maxime Déraspe
+# Maintainer: 
+# Created: Tue Nov  6 10:40:15 2012 (-0500)
+# Version: 
+# Last-Updated: 
+#           By: 
+#     Update #: 0
+#
+# Fonctions TODO :
+#
+# Shift genbank file (by X nucleotides)
+# Change orientation (strand) of genbank file
+# Merge genbank files into one
+#    Being able to combine those three functions is a must
+
+# Code:
+
+require 'bio'
+
+
+# Help Usage
+usage = 
+"Usage : $ genbank-manip.rb <option> <parameters> <gbk file>
+
+	options:
+	    // GET
+		getfts 		return all fts info (except: genes)
+		getfts-cds	return all CDS features
+		getfts-genes	return all Genes features
+		getfts-rna	return all RNA (tRNA rRNA) features
+		getfts-dna	return all fts dna sequences
+		getfts-prot	return all fts translation
+		getfts-mobile	return all mobile_element fts
+		getft-search	<kword> [pep] nt by default
+		getft-loc	<beg..end>
+		getft-locus	<locus-tag>
+		getft-protid	<protein_id>
+		getseq		return seq
+		getseq-loc	<beg..end> <strand> (return seq in location)
+		gettaxon	return taxonomy
+		getpapers	return articles
+
+	    // ADD
+		addLocusTag	<locus prefix> <submitter prefix> will create locus_tag for all features and protein_id for CDS
+		addGene		will add gene feature for each CDS, tRNA, rRNA
+		addSeq		<fasta> attached fasta to genbank file
+		addHP		will add \"hypothetical protein\" annotation on empty CDS
+
+		deleteFeature <feature> <qualifier> <regex>	will delete the qualifier from feature that contains regex
+                                                ex. deleteFeature gene note \'Protein homology\'
+
+	    // DIFF (compare 2 gbk file)
+                diff-cds	<gbk 2>  compare cds from source gbk file
+
+	    // Other
+		splitMulti	<multi-genbank> will split it into single gbk
+
+"
+
+## Init ##
+
+
+opt = ARGV[0].to_s.downcase
+abort "File Not Found ! \n\n#{usage}" if ! File.exist?(ARGV[ARGV.length-1].to_s)
+f = ARGV[ARGV.length-1] or abort usage
+@gbfile = File.new(f, "r").read
+@gb = Bio::GenBank.new(@gbfile)
+@accession = @gb.accession
+@org = @gb.organism
+
+## Functions ##
+
+# Fct: Get dna sequence
+def getDna (cds, seq)
+  loc = cds.locations
+  sbeg = loc[0].from.to_i
+  send = loc[0].to.to_i
+  fasta = Bio::Sequence::NA.new(seq.subseq(sbeg,send))
+  # position = "#{sbeg}..#{send}"
+  if loc[0].strand == -1
+    fasta.reverse_complement!
+  end
+  dna = Bio::Sequence.auto(fasta)
+  return dna
+end
+
+
+# Fct: Get Features Sequences
+def getFtsNtSequences
+  # @gb.features do |ft|
+  @gb.each_cds do |ft|
+    next if ft.feature == "source"
+    ftH = ft.to_hash
+    loc = ft.locations
+    gene = []
+    product = []
+    protId = ""
+    gene = ftH["gene"] if !ftH["gene"].nil?
+    product = ftH["product"] if !ftH["product"].nil?
+    protId = ftH["protein_id"][0] if !ftH["protein_id"].nil?
+    locustag = ftH["locus_tag"][0] if !ftH["locus_tag"].nil?
+    dna = getDna(ft,@gb.to_biosequence)
+    seqout = dna.output_fasta("#{@accession}|#{loc}|#{protId}|#{locustag}|#{gene[0]}|#{product[0]}",60)
+    puts seqout
+  end
+end
+
+# Fct: Get Features Sequences
+def getFtsProtSequences
+  @gb.each_cds do |ft|
+    ftH = ft.to_hash
+    loc = ft.locations
+    gene = []
+    product = []
+    protId = ""
+    if ftH.has_key? "pseudo"
+      next
+    end
+    gene = ftH["gene"] if !ftH["gene"].nil?
+    product = ftH["product"] if !ftH["product"].nil?
+    protId = ftH["protein_id"][0] if !ftH["protein_id"].nil?
+    locustag = ftH["locus_tag"][0] if !ftH["locus_tag"].nil?
+    if ftH.has_key? "translation"
+      pep = ftH["translation"][0] if !ftH["translation"].nil?
+    else
+      pep = getDna(ft,@gb.to_biosequence).translate
+    end
+    pepBioSeq = Bio::Sequence.auto(pep)
+    seqout = pepBioSeq.output_fasta("#{@accession}|#{loc}|#{protId}|#{locustag}|#{gene[0]}|#{product[0]}",60)
+    puts seqout
+  end
+end
+
+# Fct: Get All Mobile Elements Fts
+def  getFtsMobileElement
+  puts "Accessiont\tSeqBeg\tSeqEnd\tStrand\tMobile_Element_Type\tNote"
+  @gb.features.each do |ft|
+    if ft.feature == "mobile_element"
+      ftH = ft.to_hash
+      loc = ft.locations
+      seqBeg = loc[0].from.to_s
+      seqEnd = loc[0].to.to_s
+      strand = loc[0].strand.to_s
+      mobile_element_type = ""
+      note = ""
+      if ftH.has_key? "mobile_element_type"
+        mobile_element_type = ftH['mobile_element_type'][0]
+      end
+      if ftH.has_key? "note"
+        note = ftH['note'][0]
+      end
+      puts "#{@accession}\t#{seqBeg}\t#{seqEnd}\t#{strand}\t#{mobile_element_type}\t#{note}"
+    end
+  end
+
+end
+
+
+# Fct: Get all features location
+def getFtsLoc
+  location = ARGV[1]
+  loc = location.split("..")
+  protId = ""
+  @gb.features do |ft|
+    ftH = ft.to_hash
+    ftloc = ft.locations
+    if ftloc[0].from == loc[0].to_i && ftloc[0].to == loc[1].to_i
+      gene = []
+      product = []
+      gene = ftH["gene"] if !ftH["gene"].nil?
+      product = ftH["product"] if !ftH["product"].nil?
+      protId = ftH["protein_id"][0] if !ftH["protein_id"].nil?
+      locustag = ftH["locus_tag"][0] if !ftH["locus_tag"].nil?
+      location = "c#{location}" if ftloc[0].strand == -1
+      dna = getDna(ft,@gb.to_biosequence)
+      seqout = dna.output_fasta("#{@accession}|#{location}|#{protId}|#{locustag}|#{gene[0]}|#{product[0]}",60)
+      puts seqout
+      break
+    end
+  end
+end
+
+# Fct: Get a feature at a particular locus_tag
+def getFtLocus
+  locustag = ARGV[1]
+  protId = ""
+  @gb.features do |ft|
+    ftH = ft.to_hash
+    ftloc = ft.locations
+    if ftH.has_key? "locus_tag" and ftH["locus_tag"][0].eql? locustag
+      gene = []
+      product = []
+      gene = ftH["gene"] if !ftH["gene"].nil?
+      product = ftH["product"] if !ftH["product"].nil?
+      protId = ftH["protein_id"][0] if !ftH["protein_id"].nil?
+      locustag = ftH["locus_tag"][0] if !ftH["locus_tag"].nil?
+      if ftloc[0].strand == -1
+        location = "c#{ftloc[0].from}..#{ftloc[0].to}"
+      else
+        location = "#{ftloc[0].from}..#{ftloc[0].to}"
+      end
+      dna = getDna(ft,@gb.to_biosequence)
+      seqout = dna.output_fasta("#{@accession}|#{location}|#{protId}|#{locustag}|#{gene[0]}|#{product[0]}",60)
+      puts seqout
+    end
+  end
+end
+
+# Fct: get ft dna for a particular protein_id
+def getFtProtID
+  protein_id = ARGV[1]
+  protId = ""
+  @gb.each_cds do |ft|
+    ftH = ft.to_hash
+    ftloc = ft.locations
+    next if ! ftH.has_key? "protein_id"
+    proteinIndex = -1
+    i = 0
+    ftH["protein_id"].each do |x|
+      if x.include? protein_id
+        proteinIndex = i
+      end
+      i+=1
+    end
+    if proteinIndex != -1
+      gene = []
+      product = []
+      gene = ftH["gene"] if !ftH["gene"].nil?
+      product = ftH["product"] if !ftH["product"].nil?
+      protId = ftH["protein_id"][proteinIndex] if !ftH["protein_id"].nil?
+      locustag = ftH["locus_tag"][proteinIndex] if !ftH["locus_tag"].nil?
+      if ftloc[0].strand == -1
+        location = "complement(#{ftloc[0].from}..#{ftloc[0].to})"
+      else
+        location = "#{ftloc[0].from}..#{ftloc[0].to}"
+      end
+      dna = getDna(ft,@gb.to_biosequence)
+      seqout = dna.output_fasta("#{@accession}|#{location}|#{protId}|#{locustag}|#{gene[0]}|#{product[0]}",60)
+      puts seqout
+    end
+  end
+end
+
+
+# Fct: Return the full dna sequence
+def getSeq
+  bioSeq = @gb.to_biosequence
+  sequence = Bio::Sequence.new(bioSeq)
+  puts sequence.output_fasta("#{bioSeq.accessions[0]}",60)
+end
+
+
+# Fct: Return part of the sequence specify by loc
+def getSeqLoc
+  if ARGV.length == 4
+    strand = ARGV[2]
+    location = ARGV[1]
+  else
+    abort "You need to specify location and strand !"
+  end
+  loc = location.split("..")
+  bioSeq = @gb.to_biosequence
+  if strand.to_i == -1
+    sequence = Bio::Sequence.new(bioSeq.subseq(loc[0].to_i,loc[1].to_i).reverse_complement)
+  elsif strand.to_i == 1
+    sequence = Bio::Sequence.new(bioSeq.subseq(loc[0].to_i,loc[1].to_i))
+  else
+    abort "Bad Strand : 1 or -1 needed"
+  end
+  puts sequence.output_fasta("#{bioSeq.accessions[0]}|#{loc[0]}..#{loc[1]}|#{strand}",60)
+end
+
+
+# Fct: Get feature of according gene or product matching
+#      exactly the kword (insensitive)
+def getFt 
+  kword = ARGV[1]
+  seq = @gb.to_biosequence
+  seqoptions = ""  
+  for c in 2..ARGV.length-1
+    seqoptions += "#{ARGV[c]},"
+  end
+  # look through all features
+  @gb.each_cds do |ft|
+    ftH = ft.to_hash
+    loc = ft.locations
+    gene = []
+    product = []
+    protId = ""
+    if (!ftH["gene"].nil? && ftH["gene"][0].downcase.include?(kword.downcase)) or
+        (!ftH["product"].nil? && ftH["product"][0].downcase.include?(kword.downcase)) or
+        (!ftH["locus_tag"].nil? && ftH["locus_tag"][0].downcase.include?(kword.downcase))
+      sbeg = loc[0].from.to_i
+      send = loc[0].to.to_i
+      fasta = Bio::Sequence::NA.new(seq.subseq(sbeg,send))
+      position = "#{sbeg}..#{send}"
+      if loc[0].strand == -1
+        fasta.reverse_complement!
+        position = "c#{position}"
+      end
+      pep = Bio::Sequence.new(fasta.translate)
+      gene = ftH["gene"][0] if !ftH["gene"].nil?
+      product = ftH["product"][0] if !ftH["product"].nil?
+      protId = ftH["protein_id"][0] if !ftH["protein_id"].nil?
+      locustag = ftH["locus_tag"][0] if !ftH["locus_tag"].nil?
+      if seqoptions.downcase.include?("pep") or seqoptions.downcase.include?("prot")
+        puts pep.output_fasta("#{@accession}|#{position}|#{protId}|#{locustag}|#{gene}|#{product}", 60)
+      else
+        dna = Bio::Sequence.auto(fasta)
+        puts dna.output_fasta("#{@accession}|#{position}|#{protId}|#{locustag}|#{gene}|#{product}",60)
+      end
+    end
+  end
+end
+
+
+# Fct: Get all features info
+def getFts
+  puts "Accessiont\tSeqBeg\tSeqEnd\tStrand\tProtID\tLocusTag\tGene\tProt-Product"
+  @gb.features do |ft|
+    next if ft.feature == "gene"
+    ftH = ft.to_hash
+    loc = ft.locations
+    seqBeg = loc[0].from.to_s
+    seqEnd = loc[0].to.to_s
+    strand = loc[0].strand.to_s
+    gene = []
+    product = []
+    protId = ""
+    gene = ftH["gene"] if !ftH["gene"].nil?
+    product = ftH["product"] if !ftH["product"].nil?
+    protId = ftH["protein_id"].join(",") if !ftH["protein_id"].nil?
+    locustag = ftH["locus_tag"][0] if !ftH["locus_tag"].nil?
+    puts "#{@accession}\t#{seqBeg}\t#{seqEnd}\t#{strand}\t#{protId}\t#{locustag}\t#{gene[0]}\t#{product[0]}"
+  end
+end
+
+# Fct: Get RNA (tRNA or rRNA) features info
+def getFtsRNA
+  puts "Accessiont\tSeqBeg\tSeqEnd\tStrand\tProtID\tLocusTag\tGene\tProt-Product"
+  @gb.features do |ft|
+    next if ! ft.feature.to_s.include? "RNA"
+    ftH = ft.to_hash
+    loc = ft.locations
+    seqBeg = loc[0].from.to_s
+    seqEnd = loc[0].to.to_s
+    strand = loc[0].strand.to_s
+    gene = []
+    product = []
+    protId = ""
+    gene = ftH["gene"] if !ftH["gene"].nil?
+    product = ftH["product"] if !ftH["product"].nil?
+    protId = ftH["protein_id"].join(",") if !ftH["protein_id"].nil?
+    locustag = ftH["locus_tag"][0] if !ftH["locus_tag"].nil?
+    puts "#{@accession}\t#{seqBeg}\t#{seqEnd}\t#{strand}\t#{protId}\t#{locustag}\t#{gene[0]}\t#{product[0]}"
+  end
+end
+
+
+# Fct: Get CDS features only
+def getFtsGenes
+  puts "Accessiont\tSeqBeg\tSeqEnd\tStrand\tProtID\tLocusTag\tGene\tProt-Product"
+  @gb.features do |ft|
+    next if ft.feature != "gene"
+    begin
+      ftH = ft.to_hash
+      loc = ft.locations
+      seqBeg = loc[0].from.to_s
+      seqEnd = loc[0].to.to_s
+      strand = loc[0].strand.to_s
+      gene = []
+      product = []
+      protId = ""
+      gene = ftH["gene"] if !ftH["gene"].nil?
+      product = ftH["product"] if !ftH["product"].nil?
+      protId = ftH["protein_id"].join(",") if !ftH["protein_id"].nil?
+      locustag = ftH["locus_tag"][0] if !ftH["locus_tag"].nil?
+      puts "#{@accession}\t#{seqBeg}\t#{seqEnd}\t#{strand}\t#{protId}\t#{locustag}\t#{gene[0]}\t#{product[0]}"
+    rescue
+      puts "error"
+    end
+  end
+end
+
+# Fct: Get CDS features only
+def getFtsCDS
+  puts "Accessiont\tSeqBeg\tSeqEnd\tStrand\tProtID\tLocusTag\tGene\tProt-Product"
+  @gb.each_cds do |ft|
+    ftH = ft.to_hash
+    loc = ft.locations
+    seqBeg = loc[0].from.to_s
+    seqEnd = loc[0].to.to_s
+    strand = loc[0].strand.to_s
+    gene = []
+    product = []
+    protId = ""
+    gene = ftH["gene"] if !ftH["gene"].nil?
+    product = ftH["product"] if !ftH["product"].nil?
+    protId = ftH["protein_id"].join(",") if !ftH["protein_id"].nil?
+    locustag = ftH["locus_tag"][0] if !ftH["locus_tag"].nil?
+    puts "#{@accession}\t#{seqBeg}\t#{seqEnd}\t#{strand}\t#{protId}\t#{locustag}\t#{gene[0]}\t#{product[0]}"
+  end
+end
+
+
+# Fct: GetTaxon out of GenbankFile
+def getTaxon
+  classification = ['Kingdom:', 'Phylum:', 'Class:', 'Order:', 'Family:', 'Genus:', 'Species:', 'Organism:']
+  i = 0
+  @gb.classification.each do |taxon|
+    puts classification[i] + "\t" + taxon
+    i += 1
+  end
+  puts classification[i] + "\t" + @gb.organism
+end
+
+
+# Fct: Create Locus Tag
+def addLocusTag
+
+  prefix = ARGV[1]
+  lab_prefix = ARGV[2]
+  if ARGV.length == 3
+    lab_prefix = "MyLabName"
+  end
+  length = (@gb.each_cds{ |cds| cds }.length).to_s.length
+
+  ftIndex = 1
+
+  if ARGV.length > 3
+    ftIndex = ARGV[2].to_i
+  end
+
+  last_locus = nil
+
+  @gb.features do |ft|
+
+    next if ft.feature == "source" or ft.feature.include? "misc_"
+
+    index_to_rm = []
+    ft.qualifiers.each_with_index do |q,i|
+      if q.qualifier == "locus_tag" or q.qualifier == "protein_id"
+        index_to_rm << i
+      end
+    end
+
+    index_to_rm.sort.reverse.each do |i|
+      ft.qualifiers.delete_at(i)
+    end
+
+    if ft.feature == "gene"
+      locusNb = format("%0#{length.to_i}d", ftIndex*10)
+      newQf = Bio::Feature::Qualifier.new('locus_tag', "#{prefix}_#{locusNb}")
+      ft.qualifiers.unshift(newQf)
+      ftIndex += 1
+      last_locus = "#{prefix}_#{locusNb}"
+    end
+
+    if ft.feature != "gene"
+      if last_locus == nil
+        locusNb = format("%0#{length.to_i}d", ftIndex*10)
+        newQf = Bio::Feature::Qualifier.new('locus_tag', "#{prefix}_#{locusNb}")
+        ft.qualifiers.unshift(newQf)
+        if ft.feature == "CDS"
+          newQf_protein_id = Bio::Feature::Qualifier.new('protein_id', "gnl|#{lab_prefix}|#{prefix}_#{locusNb}")
+          ft.qualifiers.push(newQf_protein_id)
+        end
+        ftIndex += 1
+      else
+        newQf_locus_tag = Bio::Feature::Qualifier.new('locus_tag', last_locus)
+        ft.qualifiers.unshift(newQf_locus_tag)
+        if ft.feature == "CDS"
+          newQf_protein_id = Bio::Feature::Qualifier.new('protein_id', "gnl|#{lab_prefix}|#{last_locus}")
+          ft.qualifiers.push(newQf_protein_id)
+        end
+      end
+    end
+
+  end
+
+  puts @gb.to_biosequence.output(:genbank)
+
+end
+
+
+# Fct: Add Gene for all CDS, tRNA, rRNA
+def addGene
+
+  # prefix = ARGV[1]
+  # length = @gb.features.length.to_s.length
+
+  ftIndex = -1
+  gene_to_add = {}
+
+  @gb.features do |ft|
+
+    ftIndex += 1
+
+    next if ft.feature != "CDS" and ft.feature != "rRNA" and ft.feature != "tRNA"
+
+    new_feature = Bio::Feature.new("gene", ft.position)
+
+    ft.qualifiers.each do |q|
+      if q.qualifier == "locus_tag" or
+        q.qualifier == "gene" or
+        q.qualifier == "pseudo" or
+        q.qualifier == "note"
+        new_feature.append(Bio::Feature::Qualifier.new(q.qualifier,q.value))
+      end
+    end
+
+    gene_to_add[ftIndex] = new_feature
+
+  end
+
+  gene_to_add.sort_by {|k,v| k}.reverse.each do |k,v|
+    @gb.features.insert(k,v)
+  end
+
+  puts @gb.to_biosequence.output(:genbank)
+
+end
+
+
+# Fct: Delete Annotation Feature <feature> <qualifier> <regex>
+def deleteFeature
+
+  feature = ARGV[1]
+  qualifier = ARGV[2]
+  regex = ARGV[3]
+
+  ftIndex = -1
+
+  @gb.features do |ft|
+
+    ftIndex += 1
+
+    next if ft.feature != feature
+
+    # new_feature = Bio::Feature.new("gene", ft.position)
+    new_qualifiers = []
+
+    ft.qualifiers.each do |q|
+      if q.qualifier == qualifier
+        if ! q.value.include? regex
+          new_qualifiers << Bio::Feature::Qualifier.new(q.qualifier,q.value)
+        end
+      else
+        new_qualifiers << Bio::Feature::Qualifier.new(q.qualifier,q.value)
+      end
+    end
+
+    ft.qualifiers = new_qualifiers
+    # gene_to_add[ftIndex] = new_feature
+    # ft = new_feature
+
+  end
+
+  puts @gb.to_biosequence.output(:genbank)
+
+end
+
+
+# Fct: Attached fasta sequence to genbank file
+def attachSeq
+  fasta = ARGV[1]
+  if ! File.exist? fasta
+    abort "Fasta file don't exist"
+  end
+
+  @gbfile.each_line do |l|
+    if l[0..1] != "//"
+      puts l
+    end
+  end
+
+  puts "ORIGIN"
+
+  ntNum = 0
+
+  File.open(fasta,"r") do |rF|
+    while l = rF.gets
+      if l[0] == ">"
+        next
+      end
+      ntNum += (l.size - 1)
+      printf "%9s ", (ntNum - l.size + 2)
+      puts l.scan(/.{1,10}/).join(" ")
+    end
+  end
+
+  puts "//"
+
+end
+
+# Fct: Add hypothetical protein for no product CDS
+def addHP
+  
+  @gb.each_cds do |cds|
+    product = 1
+    cds.qualifiers.each do |q|
+      product = 0 if q.qualifier == "product"
+    end
+    if product == 1
+      newQf = Bio::Feature::Qualifier.new('product', "hypothetical protein")
+      cds.append(newQf)
+    end
+  end
+
+  puts @gb.to_biosequence.output(:genbank)
+
+end
+
+
+
+# Fct: Split MultiGenbank file into single
+def splitMulti
+  
+  Dir.mkdir("single-gbk") if ! Dir.exist? "single-gbk"
+
+  f = nil
+  buffer = ""
+
+  @gbfile.each_line do |l|
+    if l[0..4] == "LOCUS" || l[0..9] == "DEFINITION"
+      # contig = l.scan(/contig.*[0-9]*/)[0]
+      if l.include? "seqhdr"    # for prodigal
+        accession = l.strip.split(";")[2].gsub("\"","").gsub("seqhdr=","")
+      else
+        accession = l.strip.split(/\s+/)[1]
+      end
+      f = File.open("single-gbk/#{accession}.gbk","w")
+      f.write(l)
+    elsif l[0..2] == "//"
+      f.write(l)
+      f.close
+    else
+      f.write(l)
+    end
+  end
+
+end
+
+
+# Fct: Difference of CDS between 2 genbank files
+def diffCDS
+
+  gb2 = Bio::GenBank.new(File.read(ARGV[1]))
+
+  new_cds = {}
+  gb_diff = {}
+  gb2_cds = {}
+
+  gb2.each_cds do |cds|
+    location = Bio::Locations.new(cds.position)[0]
+    annotation = ""
+    locus_tag = ""
+    cds.qualifiers.each do |q|
+      if q.qualifier == "product"
+        annotation = q.value
+      elsif q.qualifier == "locus_tag"
+        locus_tag = q.value
+      end
+    end
+    if location.strand == -1
+      new_cds[location.from] = {location: location,
+                                status: "new",
+                                annotation: annotation,
+                                locus_tag: locus_tag}
+    else
+      new_cds[location.to] = {location: location,
+                              status: "new",
+                              annotation: annotation,
+                              locus_tag: locus_tag}
+
+    end
+  end
+
+  @gb.each_cds do |cds|
+    location = Bio::Locations.new(cds.position)[0]
+    annotation = ""
+    locus_tag = ""
+    cds.qualifiers.each do |q|
+      if q.qualifier == "product"
+        annotation = q.value
+      elsif q.qualifier == "locus_tag"
+        locus_tag = q.value
+      end
+    end
+    key = location.to
+    key = location.from if location.strand == -1
+    old_cds = {}
+
+    if new_cds.has_key? key
+
+      if new_cds[key][:location].from == location.from and
+        new_cds[key][:location].to == location.to
+
+        if new_cds[key][:annotation] != annotation # different annotation
+          new_cds[key][:status] = "diff_annotation"
+
+          if location.strand == -1
+            __start = location.to
+            __end = location.from
+          else
+            __start = location.from
+            __end = location.to
+          end
+          gb_diff[key] = {status: "diff_annotation",
+                          s_start: [__start,__start],
+                          s_end: __end,
+                          s_strand: location.strand,
+                          annotation: ["#{annotation}","#{new_cds[key][:annotation]}"],
+                          locus_tag: ["#{locus_tag}","#{new_cds[key][:locus_tag]}"]}
+        else
+          new_cds[key][:status] = "same"
+        end
+
+      else                      # different start
+        new_cds[key][:status] = "diff_start"
+        if location.strand == -1
+          __end = location.from
+          __start = [location.to, new_cds[key][:location].to]
+        else
+          __end = location.to
+          __start = [location.from, new_cds[key][:location].from]
+        end
+
+        diff_annotation = ["#{annotation}","#{annotation}"]
+        if new_cds[key][:annotation] != annotation # different annotation
+          diff_annotation = ["#{annotation}","#{new_cds[key][:annotation]}"]
+        end
+        gb_diff[key] = {status: "diff_start",
+                        s_start: __start,
+                        s_end: __end,
+                        s_strand: location.strand,
+                        annotation: diff_annotation,
+                        locus_tag: ["#{locus_tag}","#{new_cds[key][:locus_tag]}"]}
+      end
+
+    else                        # cds not present in new gb
+      if location.strand == -1
+        __start = location.to
+        __end = location.from
+      else
+        __start = location.from
+        __end = location.to
+      end
+      gb_diff[key] = {status: "diff_deletion",
+                      s_start: [__start,""],
+                      s_end: __end,
+                      s_strand: location.strand,
+                      annotation: ["#{annotation}",""],
+                      locus_tag: ["#{locus_tag}",""]}
+    end
+
+  end
+
+  new_cds.each do |k,v|
+    if v[:status] == "new"
+      if v[:location].strand == -1
+        __start =  v[:location].to
+        __end = v[:location].from
+      else
+        __start =  v[:location].from
+        __end = v[:location].to
+      end
+      gb_diff[k] = {status: "diff_new",
+                      s_start:["",__start],
+                      s_end: __end,
+                      s_strand: v[:location].strand,
+                      annotation: ["",v[:annotation]],
+                      locus_tag: ["","#{v[:locus_tag]}"]}
+    end
+  end
+
+  puts "Difference\tLocusTagRef\tStartRef\tLocusTagNew\tStartNew\tEnd\tStrand\tAnnotationRef\tAnnotationNew"
+  gb_diff.sort.to_h.each do |k,v|
+    __start = v[:locus_tag][0]
+    __start += "\t"
+    __start += v[:s_start][0].to_s
+    __start += "\t"
+    __start += v[:locus_tag][1]
+    __start += "\t"
+    __start += v[:s_start][1].to_s
+    __annotation = v[:annotation].join("\t")
+    puts "#{v[:status]}\t#{__start}\t#{v[:s_end]}\t#{v[:s_strand]}\t#{__annotation}"
+  end
+
+
+end
+
+
+# Fct: Merge genbank annotation to fasta Sequence
+def mergeGbkSeq
+
+
+end
+
+# Fct: Shift genbank annotation to fasta sequence
+def shiftGbk
+
+end
+
+
+## Main ##
+
+# switch case with the options
+case opt
+
+when "getfts"
+  getFts
+when "getfts-cds"
+  getFtsCDS
+when "getfts-genes"
+  getFtsGenes
+when "getfts-mobile"
+  getFtsMobileElement
+when "getfts-rna"
+  getFtsRNA
+when "getfts-dna"
+  getFtsNtSequences
+when "getfts-prot"
+  getFtsProtSequences
+when "getft-loc"
+  getFtsLoc
+when "getft-locus"
+  getFtLocus
+when "getseq"
+  getSeq
+when "getseq-loc"
+  getSeqLoc
+when "getft-protid"
+  getFtProtID
+when "getft-search"
+  getFt
+when "diff-cds"
+  diffCDS
+when "gettaxon"
+  getTaxon
+when "addseq"
+  attachSeq
+when "addlocustag"
+  addLocusTag
+when "addgene"
+  addGene
+when "deletefeature"
+  deleteFeature
+when "addhp"
+  addHP
+when "splitmulti"
+  splitMulti
+else
+  puts usage
+end
+
