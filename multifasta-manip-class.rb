@@ -257,19 +257,68 @@ class FastaParser               # Class FastaParser
 
 
   # Fct: Return part of the sequence specify by loc and strand
-  def getSeqLoc seqName, seqLoc, strand
-
+  def getSeqLoc seqName, seqLoc, strand, header=nil
     seq = Bio::FastaFormat.new(getGene(seqName))
     bioSeq = seq.to_biosequence()
     loc = seqLoc.split("..")
     if strand.to_i == -1
-      sequence = Bio::Sequence.new(bioSeq.subseq(loc[0].to_i,loc[1].to_i).reverse_complement)
+      tmp_seq = Bio::Sequence::NA.new(bioSeq.subseq(loc[0].to_i,loc[1].to_i)).reverse_complement
+      sequence = Bio::Sequence.new(tmp_seq)
     elsif strand.to_i == 1
-      sequence = Bio::Sequence.new(bioSeq.subseq(loc[0].to_i,loc[1].to_i))
+      sequence = Bio::Sequence.new(bioSeq.subseq(loc[0].to_i,loc[1].to_i).to_s.downcase)
     else
       abort "Bad Strand : 1 or -1 needed"
     end
-    puts sequence.output_fasta("#{bioSeq.accessions[0]}|#{loc[0]}..#{loc[1]}|#{strand}",60)
+    if header != nil
+      puts sequence.output_fasta("#{header}",60)
+    else
+      puts sequence.output_fasta("#{bioSeq.accessions[0]}|#{loc[0]}..#{loc[1]}|#{strand}",60)
+    end
+  end
+
+  # Fct: Return unique sequence
+  def uniqueSequences file
+
+    seqIDs = {}
+    printSeq = 1
+    File.open(file,"r") do |f|
+      while l = f.gets
+        if l[0] == ">"
+          key = l.split("\n")[0].split(" ")[0]
+          if seqIDs.has_key? key
+            printSeq = 0
+          else
+            seqIDs["#{key}"] = 0
+            printSeq = 1
+            puts l
+          end
+        elsif printSeq == 1
+          puts l
+        end
+      end
+    end
+
+  end
+
+
+  def formatSequences file
+
+    File.open(file,"r") do |f|
+      while l = f.gets
+        if l[0] == ">"
+          puts(l)
+        else
+          seq_len = l.length
+          i=0
+          while i < seq_len
+            puts l[i..i+59]
+            i += 60
+          end
+        end
+      end
+    end
+
+
   end
 
 

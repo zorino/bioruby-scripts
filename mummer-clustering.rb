@@ -11,7 +11,7 @@
 # 		bash (ls, lsof, mv, ps, wc ..)
 # 		multifasta-manip-class.rb
 
-require_relative '/data/users/mderaspe/packages/annotation_pipeline/ruby/multifasta-manip-class'
+require_relative '/multifasta-manip-class'
 require 'thread'
 
 # TODO : do it with parallel .. way easier thant thread
@@ -140,7 +140,7 @@ def runMUMmer list
   end
 
   Dir.chdir("./#{@seqName}-MUMmer/")
-    
+
   iterDown = 0
 
 
@@ -155,11 +155,11 @@ def runMUMmer list
     end
 
     fork { loopMUMmer(iterDown,list) }
-    
+
     iterDown += 1
 
   end
-  
+
   # Wait after all alignments (nucmer) to finish
   while numProc.to_i >= 1
     puts "=================\n #{numProc} \n ======================="
@@ -168,7 +168,7 @@ def runMUMmer list
 
   # Add Last Sequence in the list as part of the ones to keep
   writeSeqToList("Final-Sequences-IN.list.txt","#{list[list.length-1]}")
-  
+
 end
 
 seqs = splitFasta file

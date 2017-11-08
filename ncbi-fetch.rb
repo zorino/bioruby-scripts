@@ -12,11 +12,12 @@ require 'bio'
 
 usage = 
 "
-Usage : ncbi-fetch.rb <database> <id> <output-type> [output name]
+Usage : ncbi-fetch.rb [info,search,fetch] <database> <id> <output-type> [output name]
     options :	info		gives databases information
-		database  	nt or prot
-		output type = 	fasta -> seq only
-				gb -> genbank
+		search | fetch
+			database  	nt or prot
+			output type = 	fasta -> seq only
+					gb -> genbank
 "
 
 def run_ncbi_fetch db, id, type, out
@@ -54,45 +55,80 @@ def run_ncbi_fetch db, id, type, out
 
 end
 
+def efetch
+
+  db = ARGV[1] or abort usage
+  id = ARGV[2] or abort usage
+  type = ARGV[3] or abort usage
+  out = ""
+  if ! ARGV[4].nil?
+    out = ARGV[4]
+  elsif type == "gb"
+    out = "#{id}.gbk"
+  else
+    out = "#{id}.#{type}"
+  end
+
+  puts "# Fetching #{id}"
+  genbank = run_ncbi_fetch db, id, type, out
+
+  if type == "gb" and (genbank =~ /^WGS/)
+    Dir.mkdir(id) if ! Dir.exists? id
+    genbank.split("\n").each do |l|
+      if l[0..2] == "WGS"
+        puts "# This is a WGS ! ..fetching sub genbank !"
+        ids = l.split(/\s+/)[1].split("-")
+        if ids.length == 1
+          run_ncbi_fetch db, ids[0], type, "#{id}/#{ids[0]}.gbk"
+        else
+          for i in ids[0][4..-1]..ids[1][4..-1]
+            tmp_id = ids[0][0..3]+i.to_s
+            puts "  ..fetching #{tmp_id}"
+            run_ncbi_fetch db, tmp_id, type, "#{id}/#{tmp_id}.gbk"
+          end
+        end
+      end
+    end
+  end
+
+
+end
+
+def esearch
+
+  Bio::NCBI.default_email = 'default@default.com'
+  ncbi = Bio::NCBI::REST.new
+
+  db = ARGV[1] or abort usage
+  id = ARGV[2] or abort usage
+  type = ARGV[3] or abort usage
+  out = ""
+  if ! ARGV[4].nil?
+    out = ARGV[4]
+  end
+
+  output = ncbi.esearch(id, {"db"=>db, "rettype"=>type})
+  puts output
+
+end
+
+Bio::NCBI.default_email = 'default@default.com'
+ncbi = Bio::NCBI::REST.new
+
 
 if ARGV[0] == "info"
   puts "== Databases Available =="
   puts ncbi.einfo()
   puts "== =="
   abort()
-end
-
-db = ARGV[0] or abort usage
-id = ARGV[1] or abort usage
-type = ARGV[2] or abort usage
-out = ""
-if ! ARGV[3].nil?
-  out = ARGV[3]
-elsif type == "gb"
-  out = "#{id}.gbk"
+elsif ARGV[0] == "search"
+  esearch
+elsif ARGV[0] == "fetch"
+  efetch
 else
-  out = "#{id}.#{type}"
+  puts usage
+  abort
 end
 
-puts "# Fetching #{id}"
-genbank = run_ncbi_fetch db, id, type, out
 
 
-if type == "gb" and (genbank =~ /^WGS/)
-  Dir.mkdir(id) if ! Dir.exists? id
-  genbank.split("\n").each do |l|
-    if l[0..2] == "WGS"
-      puts "# This is a WGS ! ..fetching sub genbank !"
-      ids = l.split(/\s+/)[1].split("-")
-      if ids.length == 1
-        run_ncbi_fetch db, ids[0], type, "#{id}/#{ids[0]}.gbk"
-      else
-        for i in ids[0][4..-1]..ids[1][4..-1]
-          tmp_id = ids[0][0..3]+i.to_s
-          puts "  ..fetching #{tmp_id}"
-          run_ncbi_fetch db, tmp_id, type, "#{id}/#{tmp_id}.gbk"
-        end
-      end
-    end
-  end
-end
