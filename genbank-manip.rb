@@ -70,7 +70,7 @@ class GenbankParser
         product = ftH["product"] if !ftH["product"].nil?
         protId = ftH["protein_id"][0] if !ftH["protein_id"].nil?
         locustag = ftH["locus_tag"][0] if !ftH["locus_tag"].nil?
-        dna = getDna(ft,@gb.to_biosequence)
+        dna = getDna(ft,gb.to_biosequence)
         seqout = dna.output_fasta("#{prefix}#{accession}|#{protId}|#{locustag}|#{gene[0]}|#{product[0]}",60).chomp!
         output += seqout
         output += "\n"
@@ -111,7 +111,7 @@ class GenbankParser
         if ftH.has_key? "translation"
           pep = ftH["translation"][0] if !ftH["translation"].nil?
         else
-          pep = getDna(ft,@gb.to_biosequence).translate
+          pep = getDna(ft,gb.to_biosequence).translate
         end
         pepBioSeq = Bio::Sequence.auto(pep)
         seqout = pepBioSeq.output_fasta("#{prefix}#{accession}|#{protId}|#{locustag}|#{gene[0]}|#{product[0]}",60).chomp!
@@ -158,7 +158,7 @@ class GenbankParser
     location = ARGV[1]
     loc = location.split("..")
     protId = ""
-    @gb.features do |ft|
+    @genbanks.next_entry.features do |ft|
       ftH = ft.to_hash
       ftloc = ft.locations
       if ftloc[0].from == loc[0].to_i && ftloc[0].to == loc[1].to_i
@@ -169,7 +169,7 @@ class GenbankParser
         protId = ftH["protein_id"][0] if !ftH["protein_id"].nil?
         locustag = ftH["locus_tag"][0] if !ftH["locus_tag"].nil?
         location = "c#{location}" if ftloc[0].strand == -1
-        dna = getDna(ft,@gb.to_biosequence)
+        dna = getDna(ft,@genbanks.next_entry.to_biosequence)
         seqout = dna.output_fasta("#{prefix}#{@accession}|#{protId}|#{locustag}|#{gene[0]}|#{product[0]}",60).chomp!
         output += seqout
         output += "\n"
@@ -201,7 +201,7 @@ class GenbankParser
           else
             location = "#{ftloc[0].from}..#{ftloc[0].to}"
           end
-          dna = getDna(ft,@gb.to_biosequence)
+          dna = getDna(ft,gb.to_biosequence)
           seqout = dna.output_fasta("#{prefix}#{gb.accession}|#{protId}|#{locustag}|#{gene[0]}|#{product[0]}",60).chomp!
           output += seqout
           output += "\n"
@@ -242,7 +242,7 @@ class GenbankParser
           else
             location = "#{ftloc[0].from}..#{ftloc[0].to}"
           end
-          dna = getDna(ft,@gb.to_biosequence)
+          dna = getDna(ft,gb.to_biosequence)
           seqout = dna.output_fasta("#{gb.accession}|#{protId}|#{locustag}|#{gene[0]}|#{product[0]}",60).chomp!
           output += seqout
           output += "\n"
@@ -255,7 +255,7 @@ class GenbankParser
 
   # Fct: Return the full dna sequence
   def getSeq
-    bioSeq = @gb.to_biosequence
+    bioSeq = @genbanks.next_entry.to_biosequence
     sequence = Bio::Sequence.new(bioSeq)
     return sequence.output_fasta("#{bioSeq.accessions[0]}",60)
   end
@@ -270,7 +270,7 @@ class GenbankParser
       abort "You need to specify location and strand !"
     end
     loc = location.split("..")
-    bioSeq = @gb.to_biosequence
+    bioSeq = @genbanks.next_entry.to_biosequence
     if strand.to_i == -1
       sequence = Bio::Sequence.new(bioSeq.subseq(loc[0].to_i,loc[1].to_i).reverse_complement)
     elsif strand.to_i == 1

@@ -83,8 +83,8 @@ class CdhitParser
           end
         end
       end
+      clusters << cluster_array.dup
     end
-
 
     return clusters
 

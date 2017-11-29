@@ -14,12 +14,11 @@ require_relative 'cd-hit-parser'
 
 usage = "create-species-model.rb <dir> <threads>"
 
-
 # Extract features from genbank files
 def extract_gb_features file
 
   if ! File.exists? file+".fts.tsv"
-    puts "  ..extracting features from #{gb_f}"
+    puts "  ..extracting features from #{file}"
     gb_parser = GenbankParser.new(file)
     out = gb_parser.getFts
     File.open(file+".fts.tsv","w") do |fout|
@@ -92,7 +91,8 @@ end
 
 def create_pangenome dir, proc
 
-  Dir.mkdir("#{dir}/zz_pangenome") if ! File.exists? "#{dir}/zz_pangenome"
+  dir_to_make = dir.gsub('\\','')
+  Dir.mkdir("#{dir_to_make}/zz_pangenome") if ! File.exists? "#{dir_to_make}/zz_pangenome"
 
   files = [{in: "cds.fasta", out: "CDS.fasta"},
            {in: "trna.fasta", out: "tRNA.fasta"},
@@ -100,9 +100,11 @@ def create_pangenome dir, proc
 
   Parallel.map(files, in_threads: proc) { |item|
     puts "  ..#{item[:in]}"
-    `cat #{dir}/*.#{item[:in]} > #{dir}/zz_pangenome/#{item[:out]}`
-    `cd-hit -c 0.80 -d 0 -M 0 -s 0.70 -i #{dir}/zz_pangenome/#{item[:out]} -o #{dir}/zz_pangenome/#{item[:out]}.cd-hit`
-    parse_cd_hit("#{dir}/zz_pangenome/#{item[:out]}.cd-hit.clstr", "#{dir}/zz_pangenome/#{item[:out]}")
+    if ! File.zero?("#{dir_to_make}/zz_pangenome/#{item[:out]}")
+      `cat #{dir}/*.#{item[:in]} > #{dir}/zz_pangenome/#{item[:out]}`
+      `cd-hit -c 0.80 -d 0 -M 0 -s 0.70 -i #{dir}/zz_pangenome/#{item[:out]} -o #{dir}/zz_pangenome/#{item[:out]}.cd-hit`
+      parse_cd_hit("#{dir_to_make}/zz_pangenome/#{item[:out]}.cd-hit.clstr", "#{dir_to_make}/zz_pangenome/#{item[:out]}")
+    end
   }
 
 end
@@ -110,6 +112,11 @@ end
 
 
 # Main #
+usage = "create-species-model.rb <dir> <proc>"
+if ARGV.length < 2
+  abort usage
+end
+
 dir = ARGV[0]
 proc = ARGV[1]
 proc = proc.to_i
