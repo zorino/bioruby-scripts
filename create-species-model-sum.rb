@@ -26,36 +26,65 @@ def get_species species_file
 end
 
 
-def extract_consensus_seq rna, matrix_f, fasta_f
+def read_matrix matrix_f
 
-  canditate = []
-  best_rna = rna.sort_by { |x,y,z| y }.reverse[0]
-  index = best_rna[0].gsub("cluster_","").to_i
-  iterator = -1
+  puts "# Reading matrix file"
+  matrix_full = {}
+
   File.open(matrix_f, "r") do |f|
     f.gets                      # skip header
     while l = f.gets
-      iterator += 1
-      break if iterator > index
-      next if iterator != index
       # in THE cluster
       lA = l.chomp!.split("\t")
-      lA.each do |x|
-        canditate.push(*x.split(";"))
+      _cluster = lA[0]
+      matrix_full[_cluster] = []
+      lA[1..-1].each do |x|
+        next if x == "-"
+        x.split(";").each do |_x|
+          matrix_full[_cluster].push(_x)
+        end
       end
     end
   end
 
-  consensus = Bio::Alignment.new()
+  return matrix_full
+
+end
+
+
+def read_fasta fasta_f
+
+  puts "# Reading sequence file"
+  fasta_full = {}
+
   flat_f = Bio::FlatFile.auto(fasta_f)
   flat_f.each_entry do |e|
-    if canditate.include?(e.definition) and e.seq.length == best_rna[2]
-      consensus.add_seq(e.seq, e.definition)
+    fasta_full[e.definition] = e
+  end
+
+  return fasta_full
+
+end
+
+
+def extract_consensus_seq gene, matrix, fasta
+
+  # candidates = {}
+  best_gene = gene.sort_by { |x,y,z| y }.reverse[0]
+  consensus = Bio::Alignment.new()
+
+  # read_matrix matrix_f if ! defined? matrix
+  # read_fasta fasta_f if ! defined? fasta
+
+  candidates = matrix[best_gene[0]]
+  candidates.each do |c|
+    if fasta[c].seq.length == best_gene[2]
+      consensus.add_seq(fasta[c].seq, "#{c}")
     end
   end
 
   consensus_seq = []
-  (0..best_rna[2]-1).each do |i|
+  (0..best_gene[2]-1).each do |i|
     pos = []
     consensus.each_seq do |s|
       pos << s[i]
@@ -99,10 +128,12 @@ def extract_rna_consensus_cdhit cdhit_f, species_name, proc
     Dir.mkdir "#{path}/zz_consensus/rna"
   end
 
+  matrix_full = read_matrix matrix_f
+  fasta_full = read_fasta fasta_f
 
-  Parallel.map(rnas, in_processes: proc) do |k,v|
+  Parallel.map(rnas, in_threads: proc) do |k,v|
     puts "  #{k} #{v[0][3]}"
-    consensus_seq = extract_consensus_seq v, matrix_f, fasta_f
+    consensus_seq = extract_consensus_seq v, matrix_full, fasta_full
     if consensus_seq != ""
       bioseq = Bio::Sequence.new(consensus_seq)
       output_file = k.gsub(" ","_") + ".fasta"
@@ -146,9 +177,12 @@ def extract_cds_consensus_cdhit cdhit_f, species_name, proc
 
     Dir.mkdir "#{path}/zz_consensus/cds"
 
-    Parallel.map(cds, in_processes: proc) do |k,v|
+    matrix_full = read_matrix matrix_f
+    fasta_full = read_fasta fasta_f
+
+    Parallel.map(cds, in_threads: proc) do |k,v|
       puts "  #{k} #{v[0][3]}"
-      consensus_seq = extract_consensus_seq v, matrix_f, fasta_f
+      consensus_seq = extract_consensus_seq v, matrix_full, fasta_full
       if consensus_seq != ""
         bioseq = Bio::Sequence.new(consensus_seq)
         output_file = k.gsub(" ","_") + ".fasta"
@@ -677,7 +711,7 @@ end
 
 usage = "
 
-create-species-model-sum.rb <species name> <species dir> <seq type> <proc>
+create-species-model-sum.rb <species name> <species dir> <seq type> <proc> [scaffold]
 
   seq_type = rRNA, tRNA, CDS
   proc = number of processes
@@ -692,7 +726,14 @@ species_name = ARGV[0]
 species_dir = ARGV[1]
 seq_type = ARGV[2]
 proc = 2
-proc = ARGV[3].to_i if ARGV.length > 3
+if ARGV.length > 3
+  proc = ARGV[3].to_i
+else
+  abort usage
+end
+
+scaffold = nil
+scaffold = true if ARGV.length > 4
 
 # species = get_species species_file
 
@@ -710,7 +751,9 @@ elsif seq_type.downcase == "cds"
 
   cds_hit_file = species_dir+"/zz_pangenome/CDS.fasta.cd-hit"
   extract_cds_consensus_cdhit cds_hit_file, species_name, proc
-  scaffolding_for_cds_orders species_dir, species_name,  proc
+  if scaffold
+    scaffolding_for_cds_orders species_dir, species_name,  proc
+  end
 
 end
 
