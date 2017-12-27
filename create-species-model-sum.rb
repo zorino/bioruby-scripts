@@ -70,9 +70,10 @@ def extract_consensus_seq rna, matrix_f, fasta_f
 end
 
 # Will extract a consensus for all RNA sequences with the same product name
-# used for RNAs but not for CDS since different protein can have the same name (hypothetical protein)
-def extract_rna_consensus_cdhit cdhit_f, species_name
+# used for RNAs but not for CDS since different protein can have the same name (e.g hypothetical protein)
+def extract_rna_consensus_cdhit cdhit_f, species_name, proc
 
+  puts "# Extracting RNA consensus sequences"
   fasta_f = cdhit_f.gsub(".cd-hit", "")
   clstr_f = cdhit_f + ".clstr"
   info_f = clstr_f + ".info.tsv"
@@ -94,14 +95,18 @@ def extract_rna_consensus_cdhit cdhit_f, species_name
   if ! Dir.exists? "#{path}/zz_consensus"
     Dir.mkdir "#{path}/zz_consensus"
   end
+  if ! Dir.exists? "#{path}/zz_consensus/rna"
+    Dir.mkdir "#{path}/zz_consensus/rna"
+  end
 
-  rnas.each do |k, v|
+
+  Parallel.map(rnas, in_processes: proc) do |k,v|
+    puts "  #{k} #{v[0][3]}"
     consensus_seq = extract_consensus_seq v, matrix_f, fasta_f
     if consensus_seq != ""
       bioseq = Bio::Sequence.new(consensus_seq)
-      # puts bioseq.output_fasta("#{species_name} #{k}")
       output_file = k.gsub(" ","_") + ".fasta"
-      File.open("#{path}/zz_consensus/#{output_file}", "w") do |f|
+      File.open("#{path}/zz_consensus/rna/#{output_file}", "w") do |f|
         f.write(bioseq.output_fasta("#{species_name} #{k}"))
       end
     end
@@ -112,170 +117,50 @@ def extract_rna_consensus_cdhit cdhit_f, species_name
 end
 
 
-def contigs_walking_next_cluster genomes, genome_indices, cluster_order, consensus_cluster
+def extract_cds_consensus_cdhit cdhit_f, species_name, proc
 
-  genomes_with_consensus = []
-  genomes.each_with_index do |(k,g),i|
-    if g['all_cluster'][genome_indices[i]] == consensus_cluster
-      genomes_with_consensus.push(k)
-      if g['all_cluster'].length == (genome_indices[i] + 1)
-        genome_indices[i] = 0
-      else
-        _cds, _contig = g['all_cds'][genome_indices[i]]
-        __cds, __contig = g['all_cds'][genome_indices[i]-1]
-        if _contig == _contig
-          genome_indices[i] = genome_indices[i] + 1
+  puts "# Extracting CDS consensus sequences"
+  fasta_f = cdhit_f.gsub(".cd-hit", "")
+  clstr_f = cdhit_f + ".clstr"
+  info_f = clstr_f + ".info.tsv"
+  matrix_f = clstr_f + ".matrix.tsv"
+  path = File.dirname(fasta_f)
+
+  cds = {}
+  File.open(info_f, "r") do |f|
+    f.gets
+    while l = f.gets
+      cluster_id, occurences, length, name, others = l.chomp!.split("\t")
+      if ! cds.has_key? name
+        cds[cluster_id] = []
+      end
+      cds[cluster_id].push([cluster_id, occurences.split("/")[0].to_i, length.to_i, name])
+    end
+  end
+
+  if ! Dir.exists? "#{path}/zz_consensus"
+    Dir.mkdir "#{path}/zz_consensus"
+  end
+
+  if ! Dir.exists? "#{path}/zz_consensus/cds"
+
+    Dir.mkdir "#{path}/zz_consensus/cds"
+
+    Parallel.map(cds, in_processes: proc) do |k,v|
+      puts "  #{k} #{v[0][3]}"
+      consensus_seq = extract_consensus_seq v, matrix_f, fasta_f
+      if consensus_seq != ""
+        bioseq = Bio::Sequence.new(consensus_seq)
+        output_file = k.gsub(" ","_") + ".fasta"
+        File.open("#{path}/zz_consensus/cds/#{output_file}", "w") do |f|
+          f.write(bioseq.output_fasta("#{species_name} #{v[0][3]}"))
         end
       end
     end
-  end
-
-  genomes.each_with_index do |(k,g), i|
-
-    next if genomes_with_consensus.include? k
-
-    # look for wrong contig direction
-    if genome_indices[i] > 1
-      if g['all_cluster'][genome_indices[i]-2] == consensus_cluster
-        g['all_cluster'] = g['all_cluster'][0..genome_indices[i]-2].reverse + g['all_cluster'][genome_indices[i]-1..-1].reverse
-        g['all_cds'] = g['all_cds'][0..genome_indices[i]-2].reverse + g['all_cds'][genome_indices[i]-1..-1].reverse
-        g['all_cluster'] = g['all_cluster'][1..-1] + g['all_cluster'][0..0]
-        g['all_cds'] = g['all_cds'][1..-1] + g['all_cds'][0..0]
-        genome_indices[i] = 0
-        next
-      end
-    else
-      if g['all_cluster'][-1] == consensus_cluster
-        g['all_cluster'] = g['all_cluster'][0..-2].reverse + g['all_cluster'][-1..-1]
-        g['all_cds'] = g['all_cds'][0..-2].reverse + g['all_cds'][-1..-1]
-        genome_indices[i] = 0
-        next
-      end
-    end
-
-    _cluster = g['all_cluster'][genome_indices[i]]
-
-    if g['all_cluster'].index(consensus_cluster) != nil # next cluster found
-
-      _cds, _contig = g['all_cds'][genome_indices[i]].split("_-_")
-      _index = g['all_cluster'].index(consensus_cluster)
-      __cds, __contig = g['all_cds'][_index].split("_-_")
-
-      if _contig == __contig # genomic island or genome recombination (like rRNA)
-
-        present_in_consensus = false
-        genomes_with_consensus.each do |_g|
-          if genomes[_g]['all_cluster'].index(_cluster) != nil
-            present_in_consensus = true
-            break
-          end
-        end
-
-        if ! present_in_consensus
-
-          while _cluster != consensus_cluster
-            cluster_order.push(_cluster)
-            puts "   ..pusing cluster #{_cluster}"
-            genome_indices[i] = genome_indices[i] + 1
-            _cluster = g['all_cluster'][genome_indices[i]]
-          end
-
-        else
-          # do nothing because it's better to catch this cluster
-          # in the other genome that follows the consensus
-        end
-
-      else                # contig break
-
-        _index = g['all_cluster'].index(consensus_cluster)
-        g['all_cluster'] = g['all_cluster'][_index..-1] + g['all_cluster'][0.._index-1]
-        g['all_cds'] = g['all_cds'][_index..-1] + g['all_cds'][0.._index-1]
-        genome_indices[i] = 1
-
-      end
-
-    else                  # next cluster not found
-      # nothing to do cluster absent from genome
-    end
 
   end
 
-end
-
-
-def contigs_walking  genomes, clusters
-
-  origin_consensus, genome_indices, genome_nb_contigs = genome_get_origin genomes
-
-  # consensus order from clusters
-  cluster_order = []
-  total_nb_clusters = clusters.keys.length
-  current_cluster = origin_consensus
-
-  # order genome's array from the start
-  # count the number of contigs
-  genomes.each_with_index do |(k,g),i|
-    genome_nb_contigs.push(g['all_contigs'].length)
-    if g['all_cluster'].include? current_cluster
-      index = g['all_cluster'].index current_cluster
-      if index != 0
-        g['all_cluster'] = g['all_cluster'][index..-1] + g['all_cluster'][0..index-1]
-        g['all_cds'] = g['all_cds'][index..-1] + g['all_cds'][0..index-1]
-      end
-    end
-    genome_indices[i] = 0
-  end
-
-
-  while cluster_order.length < total_nb_clusters
-
-    cluster_candidates = []
-
-    genomes.each_with_index do |(k,g),i|
-      _cds, _contig = g['all_cds'][genome_indices[i]]
-      __cds, __contig = g['all_cds'][genome_indices[i]-1]
-      if _contig == _contig
-        cluster_candidates.push(g['all_cluster'][genome_indices[i]])
-      end
-    end
-
-    freq = cluster_candidates.inject(Hash.new(0)) { |h,v| h[v] += 1; h }
-    freq_array = freq.values
-    freq_array.sort!.reverse!
-
-    # p freq_array
-    p freq
-    p genome_indices
-
-    if freq.length == 1         # unanimous consensus
-
-      puts "Next consensus cluster - unanimous "
-      consensus_cluster = cluster_candidates[0]
-
-      genomes.each_with_index do |(k,g),i|
-          genome_indices[i] = genome_indices[i] + 1
-      end
-
-    else                        # next clusters candidate all different
-
-      puts "Next consensus cluster - different"
-      puts " #Cluster Candidate"
-
-      _index = genome_nb_contigs.rindex(genome_nb_contigs.min)
-      # _indices = genome_nb_contigs.each_with_index.select {|e, i| e==genome_nb_contigs.min}.map &:last
-      consensus_cluster = cluster_candidates[_index]
-
-      puts " ..#{consensus_cluster}"
-
-      contigs_walking_next_cluster genomes, genome_indices, cluster_order, consensus_cluster
-
-    end
-
-    cluster_order.push(consensus_cluster)
-
-  end
-
-  return cluster_order
+  return ""
 
 end
 
@@ -293,7 +178,6 @@ def choose_best_ref_genome genomes, genome_candidates_list, clusters
     puts "  Result (best) = #{reference_genome}"
     return reference_genome
   end
-
 
   origin_consensus = genome_get_origin genome_candidates
 
@@ -444,22 +328,9 @@ end
 
 def parse_mauve_output mauve_dir, genome, genomes
 
-  all_aln = Dir.glob("#{mauve_dir}/*")
-  aln_array = []
-  all_aln.each do |a|
-    aln_array << File.basename(a).gsub("alignment","").to_i
-  end
-  aln_array.sort!.reverse!
-  best_aln = "alignment#{aln_array[0]}"
-  aln_array[1..-1].each do |a|
-    `rm -fr #{mauve_dir}/alignment#{a}`
-  end
-
-  `mv #{mauve_dir}/#{best_aln}/*_contigs.tab #{mauve_dir}/../`
-  `rm -fr #{mauve_dir}`
-  new_mauve_dir = File.expand_path("..", "#{mauve_dir}")
   genomes[genome]['contig_order'] = []
-  File.open("#{new_mauve_dir}/#{genome}_contigs.tab","r") do |f|
+
+  File.open("#{mauve_dir}/#{genome}_contigs.tab","r") do |f|
     in_contig = false
     while l = f.gets
 
@@ -467,27 +338,134 @@ def parse_mauve_output mauve_dir, genome, genomes
         in_contig = true
         next
       elsif l.chomp!.length == 0
-        in_contig == false
+        in_contig = false
       elsif l[0..3] == "type"
         next
       end
 
       next if in_contig == false
 
-      lA = l.chomp!.split("\t")
+      l.chomp!
+      next if l.nil?
+
+      lA = l.split("\t")
+
       orientation = 1
       orientation = 0 if lA[3] == "complement"
-      genomes[genome]['contig_order'].push({contig: lA[1], orientation: orientation})
+      genomes[genome]['contig_order'].push({contig: lA[1].split(".")[0], orientation: orientation})
 
     end
   end
-
-  return best_aln
+  # p genomes[genome]['contig_order']
 
 end
 
+
+def get_cluster_order genomes, cluster_order, target_genome
+
+  # set and cut (if neccesary) first contig
+  target_contig_iterator = 0
+  current_contig = genomes[target_genome]['contig_order'][target_contig_iterator]
+  target_contig_cluster = genomes[target_genome]
+  while ! target_contig_cluster.has_key? current_contig[:contig]
+    target_contig_iterator += 1
+    current_contig = genomes[target_genome]['contig_order'][target_contig_iterator]
+    target_contig_cluster = genomes[target_genome]
+  end
+  target_contig_cluster[current_contig[:contig]].reverse! if current_contig[:orientation] == 0
+  _index = target_contig_cluster[current_contig[:contig]].index(cluster_order[0])
+  target_genome_end_clusters = []
+  if _index != 0 and _index != nil
+    target_genome_end_clusters = target_contig_cluster[current_contig[:contig]][0..(_index-1)]
+    target_contig_cluster[current_contig[:contig]] = target_contig_cluster[current_contig[:contig]][_index..-1]
+  end
+
+  target_contig_iterator = -1
+  current_contig = nil
+  target_done = false
+  new_cluster_order = []
+  _contig_cluster_iterator = 0
+  _contig_clusters = []
+
+  cluster_order.each_with_index do |c,i|
+
+    new_cluster_order << c
+    next if target_done
+
+    if current_contig == nil
+      target_contig_iterator += 1
+
+      if target_contig_iterator > (genomes[target_genome]['contig_order'].length-1)
+        target_done = true
+        next
+      end
+
+      current_contig = genomes[target_genome]['contig_order'][target_contig_iterator]
+
+      while ! target_contig_cluster.has_key? current_contig[:contig] or
+           (target_contig_iterator > genomes[target_genome]['contig_order'].length-1)
+        target_contig_iterator += 1
+        current_contig = genomes[target_genome]['contig_order'][target_contig_iterator]
+      end
+
+      _contig_clusters = target_contig_cluster[current_contig[:contig]]
+      _contig_clusters.reverse! if current_contig[:orientation] == 0
+      _contig_cluster_iterator = 0
+
+    end
+
+    if ! cluster_order.include? (_contig_clusters[_contig_cluster_iterator])
+      new_cluster_order << _contig_clusters[_contig_cluster_iterator]
+      _contig_cluster_iterator += 1
+    end
+
+    if _contig_cluster_iterator > (_contig_clusters.length-1)
+      current_contig = nil
+    end
+
+  end
+
+  # finish to add target clusters
+  if _contig_cluster_iterator < (_contig_clusters.length-1)
+    _contig_clusters[_contig_cluster_iterator..-1].each do |_c|
+      new_cluster_order << _c if ! new_cluster_order.include? _c
+    end
+    target_contig_iterator += 1
+  end
+
+  while (target_contig_iterator<genomes[target_genome]['contig_order'].length-1)
+    current_contig = genomes[target_genome]['contig_order'][target_contig_iterator]
+    if target_contig_cluster.has_key? current_contig[:contig]
+      _contig_clusters = target_contig_cluster[current_contig[:contig]]
+      _contig_clusters.reverse! if current_contig[:orientation] == 0
+      _contig_clusters.each do |_c|
+        new_cluster_order << _c if ! new_cluster_order.include? _c
+      end
+    end
+    target_contig_iterator += 1
+  end
+
+  # insert the end of the first target contig
+  cluster_to_insert = []
+  target_genome_end_clusters.each do |_c|
+    _index = new_cluster_order.index(_c)
+    if _index == nil
+      cluster_to_insert << _c
+    else
+      if ! cluster_to_insert.empty?
+        new_cluster_order.insert(_index, *cluster_to_insert)
+        cluster_to_insert = []
+      end
+    end
+  end
+
+  return new_cluster_order
+
+end
+
+
 # Extract CDS can take several CDS with same product name
-def extract_cds_consensus_cdhit species_dir, species_name, proc
+def scaffolding_for_cds_orders species_dir, species_name, proc
 
   puts "# Extracting CDS with Consensus Cluster Order"
   cdhit_f = species_dir+"/zz_pangenome/CDS.fasta.cd-hit"
@@ -520,18 +498,20 @@ def extract_cds_consensus_cdhit species_dir, species_name, proc
   genomes = {}
   genomes_list = []
   matrix = {}
+  matrix_header = []
 
   File.open(matrix_f, "r") do |f|
 
     # get header genomes
     l = f.gets
     lA = l.chomp!.split("\t")
+    matrix_header = lA
     lA[1..-1].each do |g|
       genomes_list.push(g)
       genomes[g] = {}
       genomes[g]['all_cds'] = []
       genomes[g]['all_cluster'] = []
-      genomes[g]['all_contigs'] = []
+      genomes[g]['all_contig'] = []
       genomes[g]['origin_cluster'] = ""
     end
 
@@ -546,9 +526,10 @@ def extract_cds_consensus_cdhit species_dir, species_name, proc
           next if hit == "-"
           sample, genome_id, prot_id, prot_locus, gene, product = hit.split("|")
           genomes[genomes_list[i]][prot_locus + "_-_" + genome_id] = cluster_id
+          genomes[genomes_list[i]][genome_id] = [] if ! genomes[genomes_list[i]].has_key? genome_id
           genomes[genomes_list[i]]['all_cds'].push(prot_locus + "_-_" + genome_id)
-          if ! genomes[genomes_list[i]]['all_contigs'].include? genome_id
-            genomes[genomes_list[i]]['all_contigs'].push(genome_id)
+          if ! genomes[genomes_list[i]]['all_contig'].include? genome_id
+            genomes[genomes_list[i]]['all_contig'].push(genome_id)
           end
           # genomes[genomes_list[i]]['all_cluster'].push(cluster_id)
           if genome_origins.include? cluster_id
@@ -566,12 +547,33 @@ def extract_cds_consensus_cdhit species_dir, species_name, proc
     end
   end
 
+  # order genome cds based on their annotations
+  puts "# Ordering CDS / Cluster based on original annotation"
+  genomes.each_with_index do |(k,g),i|
+    cds = []
+    File.open("#{species_dir}/#{k}.gb.fts.tsv") do |f|
+      l = f.gets
+      while l=f.gets
+        lA = l.chomp!.split("\t")
+        next if lA[0] != "CDS"
+        cds_id = lA[7] + "_-_" + lA[1]
+        next if ! g.has_key? cds_id
+        cds << cds_id
+        g[lA[1]] = [] if ! g.has_key? lA[1]
+        g[lA[1]].push(g[cds_id]) # push cluster to contig array
+      end
+    end
+    g['all_cds'].sort_by!{ |x| cds.index(x) }
+    g['all_cds'].each do |_c|
+      g['all_cluster'] << g[_c]
+    end
+  end
 
   ## Chose Best Reference Contig (for contig Ordering)
   # choose genome with the minimal number of contigs
   genomes_nb_contigs = []
   genomes.each_with_index do |(k,g),i|
-    genomes_nb_contigs.push(g['all_contigs'].length)
+    genomes_nb_contigs.push(g['all_contig'].length)
   end
 
   genomes_min_contigs = genomes_nb_contigs.each_index.select{|i| genomes_nb_contigs[i] == genomes_nb_contigs.min}
@@ -585,27 +587,87 @@ def extract_cds_consensus_cdhit species_dir, species_name, proc
   reference_genome = choose_best_ref_genome genomes, ref_genome_candidates, clusters
 
   # Mauve contig scaffold based on ref genome
-  Dir.mkdir("zz-mauve-aln") if ! File.exists? "./zz-mauve-aln"
-  all_mauve_exec = []
-  genomes.each_with_index do |(k,g),i|
-    if k != reference_genome
-      cmd = "java -Xmx500m -cp #{SELF_PATH}/mauve/Mauve.jar org.gel.mauve.contigs.ContigOrderer -output zz-mauve-aln/#{k} -ref #{path}/#{reference_genome}.fasta -draft #{path}/#{k}.fasta"
-      all_mauve_exec << {genome: k, cmd: cmd}
+  mauve_dir = "#{species_dir}/zz_pangenome/zz_consensus/zz_mauve_aln"
+
+  if ! Dir.exists? mauve_dir
+
+    puts "# Mauve Aln for Contig Ordering"
+    Dir.mkdir(mauve_dir)
+    all_mauve_exec = []
+    genomes.each_with_index do |(k,g),i|
+      if k != reference_genome
+        cmd = "java -Xmx500m -cp #{SELF_PATH}/mauve/Mauve.jar org.gel.mauve.contigs.ContigOrderer -output #{mauve_dir}/#{k} -ref #{path}/#{reference_genome}.fasta -draft #{path}/#{k}.fasta"
+        all_mauve_exec << {genome: k, cmd: cmd}
+      end
+    end
+
+    results = Parallel.map(all_mauve_exec, in_threads: proc) do |cmd|
+
+      begin
+
+        sleep rand
+
+        mauve_output = `#{cmd[:cmd]} 2>&1 > /dev/null`
+        mauve_genome_dir = "#{mauve_dir}/#{cmd[:genome]}"
+        all_aln = Dir.glob("#{mauve_genome_dir}/*")
+        aln_array = []
+        all_aln.each do |a|
+          aln_array << File.basename(a).gsub("alignment","").to_i
+        end
+        aln_array.sort!.reverse!
+        best_aln = "alignment#{aln_array[0]}"
+        aln_array[1..-1].each do |a|
+          `rm -fr #{mauve_genome_dir}/alignment#{a}`
+        end
+        `mv #{mauve_genome_dir}/#{best_aln}/*_contigs.tab #{mauve_dir}/`
+        `rm -fr #{mauve_genome_dir}`
+
+        puts "  #{cmd[:genome]}"
+
+      rescue
+        sleep 2
+        retry
+      end
+
+    end
+
+  end
+
+  # Mauve alignment parsing
+  puts "# Parse Mauve aln output"
+  results = Parallel.map(genomes.keys, in_threads: proc) do |g|
+    if g != reference_genome
+      parse_mauve_output mauve_dir, g, genomes
     end
   end
 
-  puts "# Orienting contig with Mauve"
-  results = Parallel.map(all_mauve_exec, in_threads: proc) do |cmd|
-    mauve_output = `#{cmd[:cmd]}`
-    best_aln = parse_mauve_output "zz-mauve-aln/#{cmd[:genome]}", cmd[:genome], genomes
-    puts "  #{cmd[:genome]}"
-  end
-  print("\n")
-
+  puts "# Chromosome walking with contig order"
+  # chromosome walking with mauve orientation
+  cluster_order = genomes[reference_genome]['all_cluster']
   genomes.each_with_index do |(k,g),i|
     # the contig that start can be split
-    puts "  # #{k} contig order "
-    p g['contig_order']
+    next if k == reference_genome
+    puts "  #{k}"
+    cluster_order = get_cluster_order genomes, cluster_order, k
+  end
+
+  puts "# Cluster Order"
+  File.open("#{mauve_dir}.tsv", "w") do |fout|
+    fout.write(matrix_header.join("\t"))
+    fout.write("\n")
+    cluster_order.each do |c|
+      fout.write(matrix[c].join("\t"))
+      fout.write("\n")
+    end
+  end
+
+  puts "# Number of clusters (#{clusters.length})"
+  puts "# Result : zz_mauve_aln.tsv"
+
+  # statistics .. TODO more than that
+  File.open("#{mauve_dir}.info.txt", "w") do |fout|
+    fout.write("Reference_Genome\t#{reference_genome}")
+    fout.write("Number_of_Cluster\t#{clusters.length}")
   end
 
   return reference_genome
@@ -613,12 +675,12 @@ def extract_cds_consensus_cdhit species_dir, species_name, proc
 end
 
 
-
 usage = "
 
 create-species-model-sum.rb <species name> <species dir> <seq type> <proc>
 
   seq_type = rRNA, tRNA, CDS
+  proc = number of processes
 
 "
 
@@ -637,18 +699,18 @@ proc = ARGV[3].to_i if ARGV.length > 3
 if seq_type.downcase == "rrna"
 
   rna_cdhit_file = species_dir+"/zz_pangenome/rRNA.fasta.cd-hit"
-  extract_rna_consensus_cdhit rna_cdhit_file, species_name
+  extract_rna_consensus_cdhit rna_cdhit_file, species_name, proc
 
 elsif seq_type.downcase == "trna"
 
   rna_cdhit_file = species_dir+"/zz_pangenome/tRNA.fasta.cd-hit"
-  extract_rna_consensus_cdhit rna_cdhit_file, species_name
+  extract_rna_consensus_cdhit rna_cdhit_file, species_name, proc
 
 elsif seq_type.downcase == "cds"
 
-  cluster_order = extract_cds_consensus_cdhit species_dir, species_name,  proc
-  # puts "Finish !!"
-  # puts cluster_order.length
+  cds_hit_file = species_dir+"/zz_pangenome/CDS.fasta.cd-hit"
+  extract_cds_consensus_cdhit cds_hit_file, species_name, proc
+  scaffolding_for_cds_orders species_dir, species_name,  proc
 
 end
 
