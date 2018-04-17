@@ -84,9 +84,12 @@ class FastaParser               # Class FastaParser
 
   def info
 
+    total_length = 0
     @flat_fasta.each do |f|
-      puts f.description+"\t"+f.length
+      total_length += f.length
+      puts f.entry_id + "\t" + f.length.to_s
     end
+    puts "total\t" + total_length.to_s
 
   end
 
