@@ -81,6 +81,16 @@ class FastaParser               # Class FastaParser
   end
 
 
+
+  def info
+
+    @flat_fasta.each do |f|
+      puts f.description+"\t"+f.length
+    end
+
+  end
+
+
   def split
 
     if ! Dir.exist? "single-fasta"
@@ -324,19 +334,9 @@ class FastaParser               # Class FastaParser
 
   def formatSequences file
 
-    File.open(file,"r") do |f|
-      while l = f.gets
-        if l[0] == ">"
-          puts(l)
-        else
-          seq_len = l.length
-          i=0
-          while i < seq_len
-            puts l[i..i+59]
-            i += 60
-          end
-        end
-      end
+    flat = Bio::FlatFile.auto(file)
+    flat.each_entry do |entry|
+      puts entry.to_biosequence.output(:fasta)
     end
 
 
