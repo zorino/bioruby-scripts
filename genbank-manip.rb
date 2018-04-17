@@ -336,7 +336,7 @@ class GenbankParser
 
   # Fct: Get all features info
   def getFts
-    output = "Feature\tAccessiont\tSeqBeg\tSeqEnd\tStrand\tPartial\tProtID\tLocusTag\tGene\tProt-Product\n"
+    output = "Feature\tAccessiont\tSeqBeg\tSeqEnd\tStrand\tPartial\tPseudo\tProtID\tLocusTag\tGene\tProt-Product\n"
     @genbanks.each_entry do |gb|
       gb.features do |ft|
         next if ft.feature == "gene"
@@ -349,6 +349,8 @@ class GenbankParser
         if loc[0].gt or loc[0].lt
           partial = 1
         end
+        pseudo = 0
+        pseudo = 1 if !ftH["pseudo"].nil?
         gene = []
         product = []
         protId = ""
@@ -356,7 +358,7 @@ class GenbankParser
         product = ftH["product"] if !ftH["product"].nil?
         protId = ftH["protein_id"].join(",") if !ftH["protein_id"].nil?
         locustag = ftH["locus_tag"][0] if !ftH["locus_tag"].nil?
-        output += "#{ft.feature}\t#{gb.accession}\t#{seqBeg}\t#{seqEnd}\t#{strand}\t#{partial}\t#{protId}\t#{locustag}\t#{gene[0]}\t#{product[0]}\n"
+        output += "#{ft.feature}\t#{gb.accession}\t#{seqBeg}\t#{seqEnd}\t#{strand}\t#{partial}\t#{pseudo}\t#{protId}\t#{locustag}\t#{gene[0]}\t#{product[0]}\n"
       end
     end
     return output
