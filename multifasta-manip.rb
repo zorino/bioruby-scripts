@@ -383,6 +383,9 @@ if __FILE__==$0
     gene = fasta.getGene(name)
     puts gene
 
+  when 'info'
+    fasta.info
+
   when 'split'
     fasta.split
 
