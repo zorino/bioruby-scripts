@@ -271,8 +271,10 @@ class FastaParser               # Class FastaParser
     end
     if header != nil
       puts sequence.output_fasta("#{header}",60)
+      return sequence.output_fasta("#{header}",60)
     else
       puts sequence.output_fasta("#{bioSeq.accessions[0]}|#{loc[0]}..#{loc[1]}|#{strand}",60)
+      return sequence.output_fasta("#{bioSeq.accessions[0]}|#{loc[0]}..#{loc[1]}|#{strand}",60)
     end
   end
 

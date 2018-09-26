@@ -84,12 +84,50 @@ class FastaParser               # Class FastaParser
 
   def info
 
+    contigs_500 = {total: 0, nb_contigs: 0}
+    contigs_1000 = {total: 0, nb_contigs: 0}
+    contigs_2000 = {total: 0, nb_contigs: 0}
+
     total_length = 0
+    nb_contigs = 0
     @flat_fasta.each do |f|
-      total_length += f.length
-      puts f.entry_id + "\t" + f.length.to_s
+      length = f.seq.length
+      total_length += length
+      nb_contigs += 1
+      if length < 500
+        # filter
+      elsif length < 1000
+        contigs_500[:total] += length
+        contigs_500[:nb_contigs] += 1
+      elsif length < 2000
+        contigs_500[:total] += length
+        contigs_500[:nb_contigs] += 1
+        contigs_1000[:total] += length
+        contigs_1000[:nb_contigs] += 1
+      else
+        contigs_500[:total] += length
+        contigs_500[:nb_contigs] += 1
+        contigs_1000[:total] += length
+        contigs_1000[:nb_contigs] += 1
+        contigs_2000[:total] += length
+        contigs_2000[:nb_contigs] += 1
+      end
+      puts f.entry_id + "\t" + f.seq.length.to_s
     end
-    puts "total\t" + total_length.to_s
+
+    puts ""
+
+    puts "ALL_Contigs: nb_of_contigs\t" + nb_contigs.to_s
+    puts "ALL_Contigs: total_length\t" + total_length.to_s
+
+    puts ""
+
+    puts ">2000nt_Contigs: nb_of_contigs\t" + contigs_2000[:nb_contigs].to_s
+    puts ">2000nt_Contigs: total_length\t" + contigs_2000[:total].to_s
+    puts ">1000nt_Contigs: nb_of_contigs\t" + contigs_1000[:nb_contigs].to_s
+    puts ">1000nt_Contigs: total_length\t" + contigs_1000[:total].to_s
+    puts ">500nt_Contigs: nb_of_contigs\t" + contigs_500[:nb_contigs].to_s
+    puts ">500nt_Contigs: total_length\t" + contigs_500[:total].to_s
 
   end
 
@@ -358,7 +396,8 @@ if __FILE__==$0
     "
   multifasta-manip.rb [options] <multifasta>
 
-	options :	geneNames
+	options :	info
+			geneNames
 			getSeq <regex>
 			split (will split each sequence)
 			splitNb <number of file output> 

@@ -6,7 +6,7 @@
 # version: 	0.01
 
 
-usage = "blastn-extract-hits.rb <blast8 file> <queries length> <contigs lenght>"
+usage = "blastn-extract-hits.rb <blast8 file> <queries length> <subject lenght>"
 
 
 if ARGV.length < 1
@@ -23,14 +23,14 @@ out_by_hits = "#{ARGV[0]}.byhit.sum.tsv"
 
 File.open(ARGV[1],"r") do |f|
   while l = f.gets
-    lA = l.chomp.split(" ")
+    lA = l.chomp.split("\t")
     query_length[lA[0]] = lA[1].to_i
   end
 end
 
 File.open(ARGV[2],"r") do |f|
   while l = f.gets
-    lA = l.chomp.split(" ")
+    lA = l.chomp.split("\t")
     subject_length[lA[0]] = lA[1].to_i
   end
 end
@@ -43,7 +43,7 @@ File.open(ARGV[0],"r") do |f|
   while l = f.gets
 
     lA = l.chomp.split("\t")
-    next if lA[3].to_i < 2000
+    next if lA[3].to_i < 500
     next if lA[2].to_f < 70
 
     key = lA[1]

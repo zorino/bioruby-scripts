@@ -152,13 +152,14 @@ class GenbankParser
 
 
   # Fct: Get all features location
-  def getFtsLoc prefix=""
+  def getFtsLoc location, strand, prefix=""
     prefix << "|" if prefix != "" and prefix[-1] != "|"
     output = ""
-    location = ARGV[1]
     loc = location.split("..")
     protId = ""
-    @genbanks.next_entry.features do |ft|
+    @genbanks.rewind
+    gbk_entry = @genbanks.next_entry
+    gbk_entry.features do |ft|
       ftH = ft.to_hash
       ftloc = ft.locations
       if ftloc[0].from == loc[0].to_i && ftloc[0].to == loc[1].to_i
@@ -169,7 +170,7 @@ class GenbankParser
         protId = ftH["protein_id"][0] if !ftH["protein_id"].nil?
         locustag = ftH["locus_tag"][0] if !ftH["locus_tag"].nil?
         location = "c#{location}" if ftloc[0].strand == -1
-        dna = getDna(ft,@genbanks.next_entry.to_biosequence)
+        dna = getDna(ft, gbk_entry.to_biosequence)
         seqout = dna.output_fasta("#{prefix}#{@accession}|#{protId}|#{locustag}|#{gene[0]}|#{product[0]}",60).chomp!
         output += seqout
         output += "\n"
@@ -255,7 +256,9 @@ class GenbankParser
 
   # Fct: Return the full dna sequence
   def getSeq
-    bioSeq = @genbanks.next_entry.to_biosequence
+    @genbanks.rewind
+    gbk_entry = @genbanks.next_entry
+    bioSeq = gbk_entry.to_biosequence
     sequence = Bio::Sequence.new(bioSeq)
     return sequence.output_fasta("#{bioSeq.accessions[0]}",60)
   end
@@ -263,12 +266,7 @@ class GenbankParser
 
   # Fct: Return part of the sequence specify by loc
   def getSeqLoc
-    if ARGV.length == 4
-      strand = ARGV[2]
-      location = ARGV[1]
-    else
-      abort "You need to specify location and strand !"
-    end
+
     loc = location.split("..")
     bioSeq = @genbanks.next_entry.to_biosequence
     if strand.to_i == -1
@@ -476,7 +474,7 @@ class GenbankParser
     ftIndex = 1
 
     if ARGV.length > 3
-      ftIndex = ARGV[2].to_i
+      ftIndex = ARGV[3].to_i
     end
 
     last_locus = nil
@@ -497,16 +495,16 @@ class GenbankParser
       end
 
       if ft.feature == "gene"
-        locusNb = format("%0#{length.to_i}d", ftIndex*10)
+        locusNb = format("%0#{length.to_i-1}d", ftIndex+1)
         newQf = Bio::Feature::Qualifier.new('locus_tag', "#{prefix}_#{locusNb}")
         ft.qualifiers.unshift(newQf)
         ftIndex += 1
         last_locus = "#{prefix}_#{locusNb}"
       end
 
-      if ft.feature != "gene"
+      if ft.feature == "CDS"
         if last_locus == nil
-          locusNb = format("%0#{length.to_i}d", ftIndex*10)
+          locusNb = format("%0#{length.to_i-1}d", ftIndex)
           newQf = Bio::Feature::Qualifier.new('locus_tag', "#{prefix}_#{locusNb}")
           ft.qualifiers.unshift(newQf)
           if ft.feature == "CDS"
@@ -545,7 +543,7 @@ class GenbankParser
 
       ftIndex += 1
 
-      next if ft.feature != "CDS" and ft.feature != "rRNA" and ft.feature != "tRNA"
+      next if ft.feature != "CDS" and ft.feature != "rRNA" and ft.feature != "tRNA" and ft.feature != "ncRNA"
 
       new_feature = Bio::Feature.new("gene", ft.position)
 
@@ -889,7 +887,7 @@ if __FILE__==$0
 		getpapers	return articles
 
 	    // ADD
-		addLocusTag	<locus prefix> <submitter prefix> will create locus_tag for all features and protein_id for CDS
+		addLocusTag	<locus prefix> <submitter prefix> [start_index] will create locus_tag for all features and protein_id for CDS
 		addGene		will add gene feature for each CDS, tRNA, rRNA
 		addSeq		<fasta> attached fasta to genbank file
 		addHP		will add \"hypothetical protein\" annotation on empty CDS
@@ -933,7 +931,13 @@ if __FILE__==$0
   when "getfts-prot"
     puts gbk_parser.getFtsProtSequences
   when "getft-loc"
-    puts gbk_parser.getFtsLoc
+    if ARGV.length == 4
+      strand = ARGV[2]
+      location = ARGV[1]
+      puts gbk_parser.getFtsLoc location, strand
+    else
+      abort "You need to specify location and strand !"
+    end
   when "getft-locus"
     puts gbk_parser.getFtLocus
   when "getseq"
