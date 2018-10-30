@@ -502,7 +502,8 @@ class GenbankParser
         last_locus = "#{prefix}_#{locusNb}"
       end
 
-      if ft.feature == "CDS"
+      if ft.feature == "CDS" or
+        ft.feature.include? "RNA"
         if last_locus == nil
           locusNb = format("%0#{length.to_i-1}d", ftIndex)
           newQf = Bio::Feature::Qualifier.new('locus_tag', "#{prefix}_#{locusNb}")
