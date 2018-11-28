@@ -470,8 +470,7 @@ class GenbankParser
       lab_prefix = "MyLabName"
     end
     length = (gb.each_cds{ |cds| cds }.length).to_s.length
-
-    ftIndex = 1
+    ftIndex = 0
 
     if ARGV.length > 3
       ftIndex = ARGV[3].to_i
@@ -495,7 +494,7 @@ class GenbankParser
       end
 
       if ft.feature == "gene"
-        locusNb = format("%0#{length.to_i-1}d", ftIndex+1)
+        locusNb = format("%0#{length-1}d", ftIndex+1)
         newQf = Bio::Feature::Qualifier.new('locus_tag', "#{prefix}_#{locusNb}")
         ft.qualifiers.unshift(newQf)
         ftIndex += 1
@@ -505,7 +504,8 @@ class GenbankParser
       if ft.feature == "CDS" or
         ft.feature.include? "RNA"
         if last_locus == nil
-          locusNb = format("%0#{length.to_i-1}d", ftIndex)
+          # locusNb = format("%0#{length.to_i-1}d", ftIndex)
+          locusNb = format("%0#{length-1}d", ftIndex)
           newQf = Bio::Feature::Qualifier.new('locus_tag', "#{prefix}_#{locusNb}")
           ft.qualifiers.unshift(newQf)
           if ft.feature == "CDS"
