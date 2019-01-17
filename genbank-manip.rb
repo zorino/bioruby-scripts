@@ -540,11 +540,19 @@ class GenbankParser
     ftIndex = -1
     gene_to_add = {}
 
+    genes_done = {}
+
     gb.features do |ft|
 
       ftIndex += 1
 
+      if ft.feature == "gene"
+        genes_done[ft.position] = 1
+      end
+
       next if ft.feature != "CDS" and ft.feature != "rRNA" and ft.feature != "tRNA" and ft.feature != "ncRNA"
+
+      next if genes_done.has_key? ft.position
 
       new_feature = Bio::Feature.new("gene", ft.position)
 
