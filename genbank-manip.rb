@@ -1,15 +1,15 @@
 #!/usr/bin/env ruby
 # -*- coding: utf-8 -*-
-# genbank-manip.rb --- 
-# 
+# genbank-manip.rb ---
+#
 # Filename: genbank-manip.rb
-# Description: 
+# Description:
 # Author: Maxime Déraspe
-# Maintainer: 
+# Maintainer:
 # Created: Tue Nov  6 10:40:15 2012 (-0500)
-# Version: 
-# Last-Updated: 
-#           By: 
+# Version:
+# Last-Updated:
+#           By:
 #     Update #: 0
 #
 
@@ -160,6 +160,7 @@ class GenbankParser
     @genbanks.rewind
     gbk_entry = @genbanks.next_entry
     gbk_entry.features do |ft|
+      next if ft.feature == "gene"
       ftH = ft.to_hash
       ftloc = ft.locations
       if ftloc[0].from == loc[0].to_i && ftloc[0].to == loc[1].to_i
@@ -874,41 +875,41 @@ end
 if __FILE__==$0
 
   # Help Usage
-  usage = 
+  usage =
     "Usage : $ genbank-manip.rb <option> <parameters> <gbk file>
 
-	options:
-	    // GET
-		getfts 		return all fts info (except: genes)
-		getfts-cds	return all CDS features
-		getfts-genes	return all Genes features
-		getfts-rna	return all RNA (tRNA rRNA) features
-		getfts-dna	return all fts dna sequences
-		getfts-prot	return all fts translation
-		getfts-mobile	return all mobile_element fts
-		getft-search	<kword> [pep] nt by default
-		getft-loc	<beg..end>
-		getft-locus	<locus-tag>
-		getft-protid	<protein_id>
-		getseq		return seq
-		getseq-loc	<beg..end> <strand> (return seq in location)
-		gettaxon	return taxonomy
-		getpapers	return articles
+    options:
+        // GET
+        getfts      return all fts info (except: genes)
+        getfts-cds	return all CDS features
+        getfts-genes	return all Genes features
+        getfts-rna	return all RNA (tRNA rRNA) features
+        getfts-dna	return all fts dna sequences
+        getfts-prot	return all fts translation
+        getfts-mobile	return all mobile_element fts
+        getft-search	<kword> [pep] nt by default
+        getft-loc	<beg..end>
+        getft-locus	<locus-tag>
+        getft-protid	<protein_id>
+        getseq		return seq
+        getseq-loc	<beg..end> <strand> (return seq in location)
+        gettaxon	return taxonomy
+        getpapers	return articles
 
-	    // ADD
-		addLocusTag	<locus prefix> <submitter prefix> [start_index] will create locus_tag for all features and protein_id for CDS
-		addGene		will add gene feature for each CDS, tRNA, rRNA
-		addSeq		<fasta> attached fasta to genbank file
-		addHP		will add \"hypothetical protein\" annotation on empty CDS
+        // ADD
+        addLocusTag	<locus prefix> <submitter prefix> [start_index] will create locus_tag for all features and protein_id for CDS
+        addGene		will add gene feature for each CDS, tRNA, rRNA
+        addSeq		<fasta> attached fasta to genbank file
+        addHP		will add \"hypothetical protein\" annotation on empty CDS
 
-		deleteFeature <feature> <qualifier> <regex>	will delete the qualifier from feature that contains regex
+        deleteFeature <feature> <qualifier> <regex>	will delete the qualifier from feature that contains regex
                                                 ex. deleteFeature gene note \'Protein homology\'
 
-	    // DIFF (compare 2 gbk file)
+        // DIFF (compare 2 gbk file)
                 diff-cds	<gbk 2>  compare cds from source gbk file
 
-	    // Other
-		splitMulti	<multi-genbank> will split it into single gbk
+        // Other
+        splitMulti	<multi-genbank> will split it into single gbk
 
 "
 
