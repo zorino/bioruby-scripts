@@ -10,7 +10,7 @@ require 'bio'
 
 # Set argumets
 
-usage = 
+usage =
 "
 Usage : ncbi-fetch.rb [info,search,fetch] <database> <id> <output-type> [output name]
     options :	info		gives databases information
@@ -85,6 +85,7 @@ def efetch
             tmp_id = ids[0][0..3]+i.to_s
             puts "  ..fetching #{tmp_id}"
             run_ncbi_fetch db, tmp_id, type, "#{id}/#{tmp_id}.gbk"
+            sleep 3
           end
         end
       end
@@ -129,6 +130,3 @@ else
   puts usage
   abort
 end
-
-
-
