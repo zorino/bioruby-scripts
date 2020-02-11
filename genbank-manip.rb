@@ -692,7 +692,7 @@ class GenbankParser
         end
         f = File.open("single-gbk/#{accession}.gbk","w")
         f.write(l)
-      elsif l[0..2] == "//"
+      elsif l[0..1] == "//"
         f.write(l)
         f.close
         inside_gbk = false
