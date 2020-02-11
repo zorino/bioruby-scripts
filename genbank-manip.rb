@@ -495,7 +495,7 @@ class GenbankParser
       end
 
       if ft.feature == "gene"
-        locusNb = format("%0#{length-1}d", ftIndex+1)
+        locusNb = format("%0#{length}d", ftIndex+1)
         newQf = Bio::Feature::Qualifier.new('locus_tag', "#{prefix}_#{locusNb}")
         ft.qualifiers.unshift(newQf)
         ftIndex += 1
@@ -506,7 +506,7 @@ class GenbankParser
         ft.feature.include? "RNA"
         if last_locus == nil
           # locusNb = format("%0#{length.to_i-1}d", ftIndex)
-          locusNb = format("%0#{length-1}d", ftIndex)
+          locusNb = format("%0#{length}d", ftIndex)
           newQf = Bio::Feature::Qualifier.new('locus_tag', "#{prefix}_#{locusNb}")
           ft.qualifiers.unshift(newQf)
           if ft.feature == "CDS"
@@ -680,8 +680,10 @@ class GenbankParser
     f = nil
     buffer = ""
 
+    inside_gbk = false
     @gbfile.each_line do |l|
-      if l[0..4] == "LOCUS" || l[0..9] == "DEFINITION"
+      if (l[0..4] == "LOCUS" || l[0..9] == "DEFINITION") and inside_gbk = false
+        inside_gbk = true
         # contig = l.scan(/contig.*[0-9]*/)[0]
         if l.include? "seqhdr"    # for prodigal
           accession = l.strip.split(";")[2].gsub("\"","").gsub("seqhdr=","")
@@ -693,6 +695,7 @@ class GenbankParser
       elsif l[0..2] == "//"
         f.write(l)
         f.close
+        inside_gbk = false
       else
         f.write(l)
       end
