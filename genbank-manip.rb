@@ -682,7 +682,7 @@ class GenbankParser
 
     inside_gbk = false
     @gbfile.each_line do |l|
-      if (l[0..4] == "LOCUS" || l[0..9] == "DEFINITION") and inside_gbk = false
+      if (l[0..4] == "LOCUS" || l[0..9] == "DEFINITION") and inside_gbk == false
         inside_gbk = true
         # contig = l.scan(/contig.*[0-9]*/)[0]
         if l.include? "seqhdr"    # for prodigal
