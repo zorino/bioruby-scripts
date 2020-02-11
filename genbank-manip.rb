@@ -626,13 +626,17 @@ class GenbankParser
       abort "Fasta file don't exist"
     end
 
+    has_origin = false
     @gbfile.each_line do |l|
       if l[0..1] != "//"
         puts l
       end
+      if l[0..5] == "ORIGIN"
+        has_origin = true
+      end
     end
 
-    puts "ORIGIN"
+    puts "ORIGIN" if ! has_origin
 
     ntNum = 0
 
