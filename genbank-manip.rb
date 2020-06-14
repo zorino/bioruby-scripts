@@ -266,8 +266,7 @@ class GenbankParser
 
 
   # Fct: Return part of the sequence specify by loc
-  def getSeqLoc
-
+  def getSeqLoc  location, strand
     loc = location.split("..")
     bioSeq = @genbanks.next_entry.to_biosequence
     if strand.to_i == -1
@@ -960,7 +959,14 @@ if __FILE__==$0
   when "getseq"
     puts gbk_parser.getSeq
   when "getseq-loc"
-    puts gbk_parser.getSeqLoc
+    if ARGV.length == 4
+      strand = ARGV[2]
+      location = ARGV[1]
+      puts gbk_parser.getSeqLoc location, strand
+    else
+      abort "You need to specify location and strand !"
+    end
+    # puts gbk_parser.getSeqLoc
   when "getft-protid"
     puts gbk_parser.getFtProtID
   when "getft-search"
