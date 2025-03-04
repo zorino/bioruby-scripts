@@ -43,8 +43,9 @@ def run_ncbi_fetch db, id, type, out
       f.print(genbank)
       f.close
     end
-  rescue
+  rescue => e
     if tryout < 5
+      puts("#{e}")
       tryout += 1
       sleep (tryout*5)
       retry
@@ -73,9 +74,14 @@ def efetch
   genbank = run_ncbi_fetch db, id, type, out
 
   if type == "gb" and (genbank =~ /^WGS/)
+    if (genbank =~ /^WGS_SCAFLD/)
+      pattern = "^WGS_SCAFLD"
+    else
+      pattern = "^WGS"
+    end
     Dir.mkdir(id) if ! Dir.exists? id
     genbank.split("\n").each do |l|
-      if l[0..2] == "WGS"
+      if l =~ /#{pattern}/
         puts "# This is a WGS ! ..fetching sub genbank !"
         ids = l.split(/\s+/)[1].split("-")
         if ids.length == 1
